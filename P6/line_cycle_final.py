@@ -246,16 +246,14 @@ while ret:
                 dryer_part2 = True
 
     # Update previous statuses
-    previous_frames = [frame.copy()]
-    previous_spot_statuses = [spot_statuses.copy() for spot_statuses in
-                              [spots_status1, spots_status2, spots_status3, spots_status4, spots_status5,
-                               spots_status6]]
-
     if frame_nmr % step == 0:
-        previous_frames.append(frame.copy())
-        previous_spot_statuses = [spot_statuses.copy() for spot_statuses in
-                                  [spots_status1, spots_status2, spots_status3, spots_status4, spots_status5,
-                                   spots_status6]]
+        previous_frame = frame.copy()
+        previous_spots_status1 = spots_status1.copy()
+        previous_spots_status2 = spots_status2.copy()
+        previous_spots_status3 = spots_status3.copy()
+        previous_spots_status4 = spots_status4.copy()
+        previous_spots_status5 = spots_status5.copy()
+        previous_spots_status6 = spots_status6.copy()
 
     # Drawing rectangles and texts
     spots_list = [(spots1, spots_status1), (spots2, spots_status2), (spots3, spots_status3), (spots4, spots_status4),
@@ -311,3 +309,4 @@ while ret:
 
 cap.release()
 cv2.destroyAllWindows()
+
