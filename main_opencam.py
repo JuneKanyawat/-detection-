@@ -4,11 +4,16 @@ import pickle
 from skimage.transform import resize
 import time
 from datetime import datetime
+import tkinter as tk
+import threading
+import queue
+from tkinter import *
+from tkinter import ttk
 
+app = None
 # Function to get spots boxes from the mask
 def get_spots_boxes(connected_components):
     (totalLabels, label_ids, values, centroid) = connected_components
-
     slots = []
     coef = 1
     for i in range(1, totalLabels):
@@ -20,7 +25,7 @@ def get_spots_boxes(connected_components):
 
     return slots
 
-# Load models
+# Load models (assuming these are loaded from pickle files as before)
 model1 = pickle.load(open("model/model-p1/model_DY08_P1SI.p", "rb"))
 model2 = pickle.load(open("model/model-p1/model_DY08_P1SO.p", "rb"))
 
@@ -51,6 +56,7 @@ mask2_img = cv2.imread(mask2, 0)
 # Get spots from masks
 connected_components_mask1 = cv2.connectedComponentsWithStats(mask1_img, 4, cv2.CV_32S)
 spots1 = get_spots_boxes(connected_components_mask1)
+print(spots1)
 connected_components_mask2 = cv2.connectedComponentsWithStats(mask2_img, 4, cv2.CV_32S)
 spots2 = get_spots_boxes(connected_components_mask2)
 
@@ -76,6 +82,142 @@ previous_spots_status2 = [None for _ in spots2]
 cycle_time = "N/A"
 assembly_time = "N/A"
 
+# Tkinter GUI setup
+class Application(tk.Frame):
+    def __init__(self, master=None):
+        super().__init__(master)
+        self.master = master
+        self.pack()
+        self.create_widgets()
+
+        self.is_adjust = False
+
+        # Initialize video recording variables
+        self.is_recording = False
+        self.video_writer = None
+
+    def create_widgets(self):
+        self.monitor_button = tk.Button(self)  # Monitor
+        self.monitor_button["text"] = "Monitor"
+        self.monitor_button["command"] = self.monitor
+        self.monitor_button.pack(side="top")
+
+        self.record_button = tk.Button(self)   # Record video
+        self.record_button["text"] = "Record Video"
+        self.record_button["command"] = self.record_video
+        self.record_button.pack(side="top")
+
+        self.adjust_button = tk.Button(self)  # Adjust position
+        self.adjust_button["text"] = "Adjust Position"
+        self.adjust_button["command"] = self.adjust_position
+        self.adjust_button.pack(side="top")
+
+        self.config_button = tk.Button(self)  # Configuration
+        self.config_button["text"] = "Configuration"
+        self.config_button["command"] = self.configuration
+        self.config_button.pack(side="top")
+
+    def monitor(self):
+        print("Monitor button clicked")
+
+    def record_video(self):
+        global app  # Access global app variable
+        if not self.is_recording:
+            # Start recording
+            self.start_recording()
+        else:
+            # Stop recording
+            self.stop_recording()
+
+    def start_recording(self):
+        global app  # Access global app variable
+        self.is_recording = True
+        current_datetime = datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+        video_filename = f"not_used/videos/cam_video_{current_datetime}.mp4"
+        codec = cv2.VideoWriter_fourcc(*'mp4v')
+        frame_rate = 20.0  # Adjust frame rate as needed
+        self.video_writer = cv2.VideoWriter(video_filename, codec, frame_rate, (mask_width, mask_height))
+        print(f"Recording started: {video_filename}")
+
+    def stop_recording(self):
+        global app
+        self.is_recording = False
+        if self.video_writer is not None:
+            self.video_writer.release()
+            print("Recording stopped.")
+
+    def adjust_position(self):
+        print("Adjust Position button clicked")
+
+    def configuration(self):
+        config_window = tk.Toplevel(self.master)
+        config_window.title("Configuration")
+        config_window.geometry('500x250')
+        config_window['bg'] = '#AC99F2'
+
+        table_frame = Frame(config_window)
+        table_frame.pack()
+
+        # Create a Treeview widget
+        my_table = ttk.Treeview(table_frame)
+
+        my_table['columns'] = ('main_box', 'sub_box', 'model_file', 'x', 'y', 'w', 'h')
+
+        my_table.column("#0", width=0, stretch=NO)
+        my_table.column("main_box", anchor=CENTER, width=40)
+        my_table.column("sub_box", anchor=CENTER, width=40)
+        my_table.column("model_file", anchor=CENTER, width=80)
+        my_table.column("x", anchor=CENTER, width=70)
+        my_table.column("y", anchor=CENTER, width=70)
+        my_table.column("w", anchor=CENTER, width=70)
+        my_table.column("h", anchor=CENTER, width=70)
+
+        my_table.heading("#0", text="", anchor=CENTER)
+        my_table.heading("main_box", text="Main Box", anchor=CENTER)
+        my_table.heading("sub_box", text="Sub Box", anchor=CENTER)
+        my_table.heading("model_file", text="Model File", anchor=CENTER)
+        my_table.heading("x", text="X", anchor=CENTER)
+        my_table.heading("y", text="Y", anchor=CENTER)
+        my_table.heading("w", text="W", anchor=CENTER)
+        my_table.heading("h", text="H", anchor=CENTER)
+
+        # Insert data into the Treeview for spots1
+        for i, spot in enumerate(spots1):
+            x1, y1, w, h = spot
+            main_box = 1
+            sub_box = i + 1
+            model_file = "DY08_P1SI"
+            my_table.insert(parent='', index='end', iid=f'spot1_{i}', text='',
+                            values=(main_box, sub_box, model_file, x1, y1, w, h))
+
+        # Insert data into the Treeview for spots2
+        for i, spot in enumerate(spots2):
+            x1, y1, w, h = spot
+            main_box = 2
+            sub_box = i + 1
+            model_file = "DY08_P1SO"
+            my_table.insert(parent='', index='end', iid=f'spot2_{i}', text='',
+                            values=(main_box, sub_box, model_file, x1, y1, w, h))
+
+        # Create a scrollbar and associate it with the Treeview
+        scrollbar = Scrollbar(table_frame, orient=VERTICAL, command=my_table.yview)
+        my_table.configure(yscrollcommand=scrollbar.set)
+
+        # Pack the Treeview and the scrollbar
+        my_table.pack(side=LEFT, fill=BOTH, expand=True)
+        scrollbar.pack(side=RIGHT, fill=Y)
+
+# Function to update GUI
+def update_gui():
+    global app
+    root = tk.Tk()
+    app = Application(master=root)
+    app.mainloop()
+
+# Thread for Tkinter GUI
+gui_thread = threading.Thread(target=update_gui)
+gui_thread.start()
+
 # Open video capture from the webcam
 cap = cv2.VideoCapture(0)
 frame_nmr = 0
@@ -91,8 +233,11 @@ while ret:
     if not ret:
         break
 
+    copy_frame = frame.copy()
+
     # Resize frame to match mask dimensions
     frame = cv2.resize(frame, (mask_width, mask_height))
+    copy_frame = cv2.resize(copy_frame, (mask_width, mask_height))
 
     if frame_nmr % step == 0 and previous_frame is not None:
         for spot_indx, spot in enumerate(spots1):
@@ -194,22 +339,27 @@ while ret:
             color = (255, 0, 0)  # Blue or another color for additional categories
         frame = cv2.rectangle(frame, (x1, y1), (x1 + w, y1 + h), color, 2)
 
-    # Display the frame
-    cv2.rectangle(frame, (80, 20), (300, 80), (255, 255, 255), -1)
-    cv2.putText(frame, '(Mask1): {} / {}'.format(str(sum([1 for s in spots_status1 if s == NOT_EMPTY])), str(len(spots_status1))), (100, 40),
-                cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 0, 0), 1)
-    cv2.putText(frame, '(Mask2): {} / {}'.format(str(sum([1 for s in spots_status2 if s == NOT_EMPTY])), str(len(spots_status2))), (100, 80),
-                cv2.FONT_HERSHEY_DUPLEX, 0.7, (0, 0, 0), 1)
+
     current_time = datetime.now().strftime("%H:%M:%S")
     cv2.putText(frame, current_time, (frame.shape[1] - 200, 50), cv2.FONT_HERSHEY_SIMPLEX, 1, (255, 255, 255), 2,
                 cv2.LINE_AA)
     cv2.namedWindow('frame', cv2.WINDOW_NORMAL)
     cv2.imshow('frame', frame)
+
+    # Record video if recording flag is enabled
+    if app is not None and app.is_recording:
+        if app.video_writer is not None:
+            app.video_writer.write(copy_frame)
+
+    # Handle GUI events
     if cv2.waitKey(25) & 0xFF == ord('q'):
         print(arr)
         break
+
     frame_nmr += 1
 
 cap.release()
 print(arr)
 cv2.destroyAllWindows()
+
+
